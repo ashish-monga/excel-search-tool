@@ -146,7 +146,8 @@
       headers.forEach((header, idx) => {
         const opt = document.createElement("option");
         opt.value = idx;
-        opt.textContent = `Column ${String.fromCharCode(65 + idx)}: ${header}`;
+        // Modified: Only display the header name
+        opt.textContent = header;
         select.appendChild(opt);
       });
     }
@@ -156,7 +157,8 @@
       menu.innerHTML = "";
       headers.forEach((header, idx) => {
         const label = document.createElement("label");
-        label.innerHTML = `<input type="checkbox" value="${idx}" /> ${String.fromCharCode(65 + idx)}: ${header}`;
+        // Modified: Only display the header name for the checkbox label
+        label.innerHTML = `<input type="checkbox" value="${idx}" /> ${header}`;
         menu.appendChild(label);
       });
       updateOutputPlaceholder();
@@ -168,7 +170,8 @@
 
     function updateOutputPlaceholder() {
       const selected = Array.from(document.querySelectorAll("#checkboxMenu input:checked"))
-                            .map(cb => String.fromCharCode(65 + parseInt(cb.value)) + ": " + headers[cb.value]);
+                          // Modified: Only display the header name in the placeholder
+                          .map(cb => headers[parseInt(cb.value)]);
       const input = document.querySelector("#outputColumnDropdown input");
       input.value = selected.length ? selected.join(", ") : "";
     }
@@ -283,8 +286,36 @@
       window.filteredResults = { results, outputCols };
     }
 
+    /**
+     * Generates a filename based on the current search keywords.
+     * Replaces spaces and special characters with underscores.
+     * @returns {string} The formatted filename prefix.
+     */
+    function getKeywordsForFilename() {
+      const mode = parseInt(searchModeSelect.value);
+      const inputs = document.querySelectorAll(".keyword");
+      const keywords = Array.from(inputs).map(i => i.value.trim()).filter(k => k);
+
+      if (keywords.length === 0) {
+        return "results"; // Default if no keywords entered
+      }
+
+      let filename = "";
+      if (mode === 4) { // Exact phrase
+        filename = keywords[0];
+      } else { // Multiple keywords
+        filename = keywords.join("_");
+      }
+
+      // Sanitize the filename: replace spaces with underscores, remove invalid characters
+      filename = filename.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_.-]/g, '');
+      return filename || "results"; // Fallback in case sanitization results in an empty string
+    }
+
     function downloadHTML() {
       const { results, outputCols } = window.filteredResults;
+      const filenamePrefix = getKeywordsForFilename(); // Get the dynamic filename prefix
+
       const headerHTML = outputCols.map(idx => `<th>${headers[idx]}</th>`).join("");
       const rowsHTML = results.map(row => `<tr>${row.map(cell => `<td>${cell}</td>`).join("")}</tr>`).join("");
       const html = `
@@ -296,19 +327,23 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "filtered_results.html";
+      // Use the dynamic filename prefix
+      a.download = `${filenamePrefix}_filtered_results.html`;
       a.click();
       URL.revokeObjectURL(url);
     }
 
     function downloadExcel() {
       const { results, outputCols } = window.filteredResults;
+      const filenamePrefix = getKeywordsForFilename(); // Get the dynamic filename prefix
+
       const wsData = [outputCols.map(idx => headers[idx])];
       results.forEach(row => wsData.push(row.map(cell => cell.replace(/<[^>]+>/g, ''))));
       const ws = XLSX.utils.aoa_to_sheet(wsData);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Filtered");
-      XLSX.writeFile(wb, "filtered_results.xlsx");
+      // Use the dynamic filename prefix
+      XLSX.writeFile(wb, `${filenamePrefix}_filtered_results.xlsx`);
     }
   </script>
 </body>
