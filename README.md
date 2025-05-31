@@ -1,9 +1,3 @@
-# 🔍 Excel Search Tool
-
-A lightweight, browser-based tool to **search Excel files by keywords or exact phrases**, highlight matches, and **export filtered results** in HTML or Excel format — all without uploading any data to a server.
-
-🌐 Live Demo: [ashish-monga.github.io/excel-search-tool](https://ashish-monga.github.io/excel-search-tool/)
-
 ## ✨ Features
 
 - 📂 Upload `.xlsx`, `.xls`, or `.xlsm` files directly from your device
