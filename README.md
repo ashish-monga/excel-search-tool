@@ -10,7 +10,7 @@
 - 📥 Export filtered results as:
   - A styled HTML file with highlights
   - A clean Excel file for further use
-💡 *All processing happens locally in your browser — your data never leaves your computer, ensuring privacy and security.*
+>💡 *All processing happens locally in your browser — your data never leaves your computer, ensuring privacy and security.*
 
 ---
 
