@@ -4,8 +4,6 @@ A lightweight, browser-based tool to **search Excel files by keywords or exact p
 
 🌐 Live Demo: [ashish-monga.github.io/excel-search-tool](https://ashish-monga.github.io/excel-search-tool/)
 
----
-
 ## ✨ Features
 
 - 📂 Upload `.xlsx`, `.xls`, or `.xlsm` files directly from your device
