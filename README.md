@@ -22,12 +22,6 @@ A lightweight, browser-based tool to **search Excel files by keywords or exact p
 
 ---
 
-## 📸 Preview
-
-![Excel Search Tool Screenshot](https://raw.githubusercontent.com/ashish-monga/excel-search-tool/main/preview.png)
-
----
-
 ## 🚀 How to Use This Tool
 
 1. **Open the tool** in your web browser using the [live demo link](https://ashish-monga.github.io/excel-search-tool/).
