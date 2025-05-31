@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Excel Search Tool</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background: #f4f4f4; }
+    .container { max-width: 900px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+    input[type="file"], select, button, input[type="text"] {
+      display: block; width: 100%; margin-bottom: 15px; padding: 10px; border-radius: 4px; border: 1px solid #ccc;
+      box-sizing: border-box;
+    }
+    label { font-weight: bold; margin-bottom: 5px; display: block; }
+    .dropdown-checkboxes { position: relative; margin-bottom: 15px; }
+    .dropdown-checkboxes input[readonly] {
+      cursor: pointer; background: white;
+    }
+    .checkbox-menu {
+      position: absolute; background: white; border: 1px solid #ccc;
+      max-height: 200px; overflow-y: auto; z-index: 1000; display: none; width: 100%;
+    }
+    .checkbox-menu label {
+      display: block; padding: 8px; cursor: pointer; user-select: none;
+    }
+    .checkbox-menu input[type="checkbox"] {
+      margin-right: 10px; accent-color: #000;
+    }
+    .dropdown-checkboxes.active .checkbox-menu { display: block; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    td, th { border: 1px solid #ccc; padding: 10px; background: #fff; text-align: left; }
+    th { background: #eee; }
+    .highlight { background-color: yellow; font-weight: bold; }
+    .hidden { display: none; }
+    .download-buttons { display: flex; gap: 10px; margin-top: 15px; }
+    .download-buttons button { flex: 1; }
+    #keywordInputs input { margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Excel Search Tool</h2>
+    <input type="file" id="fileInput" accept=".xlsx,.xls,.xlsm" />
+
+    <label for="searchMode">Search mode:</label>
+    <select id="searchMode">
+      <option value="1" selected>1 keyword</option>
+      <option value="2">2 keywords</option>
+      <option value="3">3 keywords</option>
+      <option value="4">Exact phrase</option>
+    </select>
+
+    <div id="keywordInputs"></div>
+
+    <!-- Toggle switch -->
+    <div id="sequentialToggleContainer" class="hidden" style="margin-bottom: 15px;">
+      <label>
+        <input type="checkbox" id="sequentialToggle" />
+        Match keywords in sequence (Keyword 1 → Keyword 2 → Keyword 3)
+      </label>
+    </div>
+
+    <label for="searchColumn">Column to search (from file):</label>
+    <select id="searchColumn"></select>
+
+    <label>Columns to include in output (from file):</label>
+    <div class="dropdown-checkboxes" id="outputColumnDropdown">
+      <input type="text" readonly placeholder="Select output columns" onclick="toggleCheckboxMenu()" />
+      <div class="checkbox-menu" id="checkboxMenu"></div>
+    </div>
+
+    <button onclick="processFile()">Search</button>
+
+    <div class="download-buttons hidden" id="downloadSection">
+      <button onclick="downloadHTML()">Download HTML</button>
+      <button onclick="downloadExcel()">Download Excel</button>
+    </div>
+
+    <div id="resultCount"></div>
+    <table id="resultTable"></table>
+  </div>
+
+  <!-- External XLSX lib -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.16.9/xlsx.full.min.js"></script>
+
+  <script>
+    let workbookData = [];
+    let headers = [];
+
+    const keywordInputsDiv = document.getElementById("keywordInputs");
+    const searchModeSelect = document.getElementById("searchMode");
+
+    searchModeSelect.addEventListener("change", renderKeywordInputs);
+    renderKeywordInputs();
+
+    function renderKeywordInputs() {
+      const mode = parseInt(searchModeSelect.value);
+      keywordInputsDiv.innerHTML = "";
+      const label = (mode === 4) ? "Enter exact phrase:" : "Enter keyword #";
+      const count = (mode === 4) ? 1 : mode;
+
+      for (let i = 1; i <= count; i++) {
+        const input = document.createElement("input");
+        input.type = "text";
+        input.placeholder = (mode === 4) ? label : `${label} ${i}`;
+        input.className = "keyword";
+        keywordInputsDiv.appendChild(input);
+      }
+
+      // Show/hide sequential toggle
+      const toggleContainer = document.getElementById("sequentialToggleContainer");
+      toggleContainer.classList.toggle("hidden", !(mode === 2 || mode === 3));
+    }
+
+    function toggleCheckboxMenu() {
+      document.getElementById("outputColumnDropdown").classList.toggle("active");
+    }
+    document.addEventListener("click", function(e) {
+      if (!document.getElementById("outputColumnDropdown").contains(e.target)) {
+        document.getElementById("outputColumnDropdown").classList.remove("active");
+      }
+    });
+
+    document.getElementById("fileInput").addEventListener("change", function() {
+      const file = this.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: "array" });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+        workbookData = rows;
+        headers = rows[0];
+
+        populateSearchDropdown();
+        populateOutputCheckboxes();
+      };
+      reader.readAsArrayBuffer(file);
+    });
+
+    function populateSearchDropdown() {
+      const select = document.getElementById("searchColumn");
+      select.innerHTML = "";
+      headers.forEach((header, idx) => {
+        const opt = document.createElement("option");
+        opt.value = idx;
+        opt.textContent = header;
+        select.appendChild(opt);
+      });
+
+      // Default to "content" column if exists, else first column
+      const contentIdx = headers.findIndex(h => h.toLowerCase() === "content");
+      select.selectedIndex = contentIdx >= 0 ? contentIdx : 0;
+    }
+
+    function populateOutputCheckboxes() {
+      const menu = document.getElementById("checkboxMenu");
+      menu.innerHTML = "";
+      headers.forEach((header, idx) => {
+        const label = document.createElement("label");
+        // Only check "content" column by default, else unchecked
+        const isChecked = header.toLowerCase() === "content";
+        label.innerHTML = `<input type="checkbox" value="${idx}" ${isChecked ? "checked" : ""} /> ${header}`;
+        menu.appendChild(label);
+      });
+      updateOutputPlaceholder();
+      menu.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+        cb.addEventListener('change', updateOutputPlaceholder);
+      });
+    }
+
+    function updateOutputPlaceholder() {
+      const selected = Array.from(document.querySelectorAll("#checkboxMenu input:checked"))
+        .map(cb => headers[parseInt(cb.value)]);
+      const input = document.querySelector("#outputColumnDropdown input");
+      input.value = selected.length ? selected.join(", ") : "";
+    }
+
+    function formatDate(excelDate) {
+      const date = XLSX.SSF.parse_date_code(excelDate);
+      if (!date) return excelDate;
+      const d = new Date(Date.UTC(date.y, date.m - 1, date.d));
+      return `${("0" + d.getDate()).slice(-2)}-${("0" + (d.getMonth() + 1)).slice(-2)}-${d.getFullYear().toString().slice(-2)}`;
+    }
+
+    function processFile() {
+      const mode = parseInt(searchModeSelect.value);
+      const sequential = document.getElementById("sequentialToggle").checked;
+      const inputs = document.querySelectorAll(".keyword");
+      const keywords = Array.from(inputs).map(i => i.value.trim()).filter(k => k);
+
+      if ((mode < 4 && keywords.length !== mode) || (mode === 4 && keywords.length !== 1)) {
+        alert("Please enter the correct number of keywords/phrase.");
+        return;
+      }
+
+      const searchColIdx = parseInt(document.getElementById("searchColumn").value);
+      const outputCols = Array.from(document.querySelectorAll("#checkboxMenu input:checked")).map(cb => parseInt(cb.value));
+
+      if (isNaN(searchColIdx) || outputCols.length === 0) {
+        alert("Please select a search column and at least one output column.");
+        return;
+      }
+
+      const results = [];
+      const seen = new Set();
+
+      for (let i = 1; i < workbookData.length; i++) {
+        const row = workbookData[i];
+        if (!row) continue;
+        const cell = row[searchColIdx];
+        if (!cell || typeof cell !== "string") continue;
+
+        const lowerCell = cell.toLowerCase();
+        const lowerKeywords = keywords.map(k => k.toLowerCase());
+
+        let match = false;
+
+        if (mode === 4) {
+          // Exact phrase search
+          match = lowerCell.includes(lowerKeywords[0]);
+        } else if ((mode === 2 || mode === 3) && sequential) {
+          // Sequential filtering: filter keyword 1 first, then filter those rows containing keyword 2 anywhere, then keyword 3 anywhere
+          // Implemented as stepwise filter on the current row string
+
+          // First check Keyword 1 anywhere
+          if (!lowerCell.includes(lowerKeywords[0])) {
+            match = false;
+          } else {
+            // If 2 keywords: keyword 2 anywhere
+            if (mode === 2) {
+              match = lowerCell.includes(lowerKeywords[1]);
+            }
+            // If 3 keywords: keyword 2 anywhere and keyword 3 anywhere
+            else if (mode === 3) {
+              match = lowerCell.includes(lowerKeywords[1]) && lowerCell.includes(lowerKeywords[2]);
+            } else {
+              match = false;
+            }
+          }
+        } else {
+          // Default: all keywords anywhere (order doesn't matter)
+          match = lowerKeywords.every(k => lowerCell.includes(k));
+        }
+
+        if (match && !seen.has(row.join("|"))) {
+          seen.add(row.join("|"));
+          const resultRow = outputCols.map(idx => {
+            let val = row[idx];
+            if (typeof val === "number" && idx !== searchColIdx && XLSX.SSF.parse_date_code(val)) {
+              val = formatDate(val);
+            }
+            if (idx === searchColIdx) {
+              let strVal = String(val);
+              lowerKeywords.forEach(k => {
+                const regex = new RegExp(k, "gi");
+                strVal = strVal.replace(regex, match => `<span class="highlight">${match}</span>`);
+              });
+              return strVal;
+            }
+            return val || "";
+          });
+          results.push(resultRow);
+        }
+      }
+
+      displayResults(results, outputCols);
+    }
+
+    function displayResults(results, outputCols) {
+      const table = document.getElementById("resultTable");
+      const resultCount = document.getElementById("resultCount");
+      const downloadSection = document.getElementById("downloadSection");
+
+      if (results.length === 0) {
+        resultCount.textContent = "No matches found.";
+        table.innerHTML = "";
+        downloadSection.classList.add("hidden");
+        return;
+      }
+
+      resultCount.textContent = `${results.length} match${results.length > 1 ? "es" : ""} found.`;
+
+      // Build table header
+      let html = "<thead><tr>";
+      outputCols.forEach(idx => {
+        html += `<th>${headers[idx]}</th>`;
+      });
+      html += "</tr></thead><tbody>";
+
+      // Build rows
+      results.forEach(row => {
+        html += "<tr>";
+        row.forEach(cell => {
+          html += `<td>${cell}</td>`;
+        });
+        html += "</tr>";
+      });
+      html += "</tbody>";
+
+      table.innerHTML = html;
+      downloadSection.classList.remove("hidden");
+    }
+
+    function downloadHTML() {
+      const tableHTML = document.getElementById("resultTable").outerHTML;
+      const htmlContent = `
+        <html><head><meta charset="UTF-8"><title>Search Results</title>
+        <style>table { border-collapse: collapse; } td, th { border: 1px solid #ccc; padding: 8px; }</style>
+        </head><body>${tableHTML}</body></html>
+      `;
+      const blob = new Blob([htmlContent], { type: "text/html" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "search_results.html";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    function downloadExcel() {
+      const wb = XLSX.utils.book_new();
+      const table = document.getElementById("resultTable");
+      const ws = XLSX.utils.table_to_sheet(table);
+      XLSX.utils.book_append_sheet(wb, ws, "Results");
+      XLSX.writeFile(wb, "search_results.xlsx");
+    }
+  </script>
+</body>
+</html>
