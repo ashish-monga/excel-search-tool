@@ -8,51 +8,58 @@ A lightweight, browser-based tool to **search Excel files by keywords or exact p
 
 ## ✨ Features
 
-- 📂 Upload `.xlsx`, `.xls`, or `.xlsm` files
-- 🔎 Search by:
-  - One, two, or three keywords (all must match)
-  - Exact phrases
-- 🔡 Case-insensitive search
-- ✅ Choose which column to search
-- 📊 Choose which columns to include in output
-- 💡 Highlighted results
-- 📥 Download results as:
-  - HTML file with highlights
-  - Excel file (cleaned)
+- 📂 Upload `.xlsx`, `.xls`, or `.xlsm` files directly from your device
+- 🔎 Powerful search options:
+  - Search using 1, 2, or 3 keywords (all must appear in results)
+  - Search exact phrases for precise matching
+- 🔡 Case-insensitive matching for flexibility
+- ✅ Choose which column(s) to search in your Excel file
+- 📊 Select which columns you want to include in the output
+- 💡 Matched keywords are highlighted in the results
+- 📥 Export filtered results as:
+  - A styled HTML file with highlights
+  - A clean Excel file for further use
 
 ---
 
 ## 📸 Preview
 
-![Excel Search Tool Screenshot](https://raw.githubusercontent.com/ashish-monga/excel-search-tool/main/preview.png) <!-- Add your actual screenshot URL if available -->
+![Excel Search Tool Screenshot](https://raw.githubusercontent.com/ashish-monga/excel-search-tool/main/preview.png)
 
 ---
 
-## 🚀 How to Use
+## 🚀 How to Use This Tool
 
-1. Open the [tool in your browser](https://ashish-monga.github.io/excel-search-tool/)
-2. Upload your Excel file (`.xlsx`, `.xls`, or `.xlsm`)
-3. Choose a search mode:
-   - `1 keyword`
-   - `2 keywords`
-   - `3 keywords`
-   - `Exact phrase`
-4. Select the column to search from your file.
-5. Select the columns to include in the results.
-6. Click **Search**.
-7. Download the results as **HTML** or **Excel**.
+1. **Open the tool** in your web browser using the [live demo link](https://ashish-monga.github.io/excel-search-tool/).
 
-> 💡 All data processing is done client-side. Your data never leaves your browser.
+2. **Upload your Excel file** by clicking the upload button and selecting a `.xlsx`, `.xls`, or `.xlsm` file from your device.
+
+3. **Choose your search mode** depending on your needs:
+   - **1 keyword**: Search for any single keyword.
+   - **2 keywords**: Find rows containing both keywords.
+   - **3 keywords**: Find rows containing all three keywords.
+   - **Exact phrase**: Search for an exact string of text.
+
+4. **Select the column to search** within your uploaded file — this helps narrow down results to relevant data.
+
+5. **Pick the columns to include** in the search results output — you can focus on the most important data.
+
+6. **Click the Search button** to run your query. The tool will quickly process the data and display matches.
+
+7. **Download your results** if desired:
+   - Save as an **HTML file** that highlights your search terms.
+   - Save as an **Excel file** for easy further analysis.
+
+> 💡 *All processing happens locally in your browser — your data never leaves your computer, ensuring privacy and security.*
 
 ---
 
 ## 🛠️ Built With
 
-- HTML5 / CSS3
-- JavaScript (vanilla)
-- [SheetJS (xlsx)](https://github.com/SheetJS/sheetjs)
+- HTML5 and CSS3 for the user interface
+- Vanilla JavaScript for functionality
+- [SheetJS (xlsx)](https://github.com/SheetJS/sheetjs) library for Excel file parsing and creation
 
 ---
 
-## 📁 Project Structure
 
