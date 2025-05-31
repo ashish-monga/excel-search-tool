@@ -4,13 +4,13 @@
 - 🔎 Powerful search options:
   - Search using 1, 2, or 3 keywords (all must appear in results)
   - Search exact phrases for precise matching
-- 🔡 Case-insensitive matching for flexibility
 - ✅ Choose which column(s) to search in your Excel file
 - 📊 Select which columns you want to include in the output
 - 💡 Matched keywords are highlighted in the results
 - 📥 Export filtered results as:
   - A styled HTML file with highlights
   - A clean Excel file for further use
+💡 *All processing happens locally in your browser — your data never leaves your computer, ensuring privacy and security.*
 
 ---
 
