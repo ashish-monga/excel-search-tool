@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Excel Search Tool</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background: #f4f4f4; position: relative; }
+    .container { max-width: 900px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); position: relative; }
+
+    input[type="file"], select, button, input[type="text"] {
+      display: block; width: 100%; margin-bottom: 15px; padding: 10px; border-radius: 4px; border: 1px solid #ccc;
+      box-sizing: border-box;
+    }
+    label { font-weight: bold; margin-bottom: 5px; display: block; }
+    .dropdown-checkboxes { position: relative; margin-bottom: 15px; }
+    .dropdown-checkboxes input[readonly] {
+      cursor: pointer; background: white;
+    }
+    .checkbox-menu {
+      position: absolute; background: white; border: 1px solid #ccc;
+      max-height: 200px; overflow-y: auto; z-index: 1000; display: none; width: 100%;
+    }
+    .checkbox-menu label {
+      display: block; padding: 8px; cursor: pointer; user-select: none;
+    }
+    .checkbox-menu input[type="checkbox"] {
+      margin-right: 10px; accent-color: #000;
+    }
+    .dropdown-checkboxes.active .checkbox-menu { display: block; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    td, th { border: 1px solid #ccc; padding: 10px; background: #fff; text-align: left; }
+    th { background: #eee; }
+    .highlight { background-color: yellow; font-weight: bold; }
+    .hidden { display: none; }
+    .download-buttons { display: flex; gap: 10px; margin-top: 15px; }
+    .download-buttons button { flex: 1; }
+    #keywordInputs input { margin-bottom: 10px; }
+
+    /* Small "Read Me" button top right */
+    .info-button {
+      position: absolute;
+      top: 15px;
+      right: 15px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 3px 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      line-height: 1.2;
+      white-space: nowrap;
+      width: auto;
+      min-width: 0;
+      z-index: 1100;
+      user-select: none;
+      transition: background-color 0.2s ease;
+    }
+    .info-button:hover {
+      background-color: #0056b3;
+    }
+
+    /* ReadMe collapsible container */
+    #readmeContainer {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.4s ease;
+      background: #fff;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      padding: 0 15px;
+      margin-top: 20px;
+      box-sizing: border-box;
+    }
+
+    /* When active, max-height large enough to show content */
+    #readmeContainer.active {
+      max-height: 700px; /* enough for content, adjust if needed */
+      padding-top: 15px;
+      padding-bottom: 15px;
+    }
+
+    #readmeContent {
+      white-space: pre-wrap; /* preserve formatting */
+      font-family: monospace, monospace;
+      font-size: 13px;
+      line-height: 1.4;
+      color: #333;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Excel Search Tool</h2>
+    <button class="info-button" onclick="toggleReadme()">Read Me</button>
+
+    <input type="file" id="fileInput" accept=".xlsx,.xls,.xlsm" />
+
+    <label for="searchMode">Search mode:</label>
+    <select id="searchMode">
+      <option value="1" selected>1 keyword</option>
+      <option value="2">2 keywords</option>
+      <option value="3">3 keywords</option>
+      <option value="4">Exact phrase</option>
+    </select>
+
+    <div id="keywordInputs"></div>
+
+    <div id="sequentialToggleContainer" class="hidden" style="margin-bottom: 15px;">
+      <label>
+        <input type="checkbox" id="sequentialToggle" />
+        Match keywords in sequence (Keyword 1 → Keyword 2 → Keyword 3)
+      </label>
+    </div>
+
+    <label for="searchColumn">Column to search (from file):</label>
+    <select id="searchColumn"></select>
+
+    <label>Columns to include in output (from file):</label>
+    <div class="dropdown-checkboxes" id="outputColumnDropdown">
+      <input type="text" readonly placeholder="Select output columns" onclick="toggleCheckboxMenu()" />
+      <div class="checkbox-menu" id="checkboxMenu"></div>
+    </div>
+
+    <button onclick="processFile()">Search</button>
+
+    <div class="download-buttons hidden" id="downloadSection">
+      <button onclick="downloadHTML()">Download HTML</button>
+      <button onclick="downloadExcel()">Download Excel</button>
+    </div>
+
+    <div id="resultCount"></div>
+    <table id="resultTable"></table>
+
+    <!-- Collapsible ReadMe section -->
+    <div id="readmeContainer">
+      <div id="readmeContent">Loading README...</div>
+    </div>
+  </div>
+
+  <!-- External XLSX lib -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.16.9/xlsx.full.min.js"></script>
+
+  <script>
+    // ReadMe toggle and fetch
+    const readmeBtn = document.querySelector('.info-button');
+    const readmeContainer = document.getElementById('readmeContainer');
+    const readmeContent = document.getElementById('readmeContent');
+    const mdFilePath = 'https://raw.githubusercontent.com/ashish-monga/excel-search-tool/main/README.md';
+
+    function toggleReadme() {
+      const isActive = readmeContainer.classList.toggle('active');
+      if (isActive && readmeContent.textContent === "Loading README...") {
+        fetch(mdFilePath)
+          .then(res => {
+            if (!res.ok) throw new Error('Network response was not ok');
+            return res.text();
+          })
+          .then(mdText => {
+            // Basic markdown formatting for display (replace ##, #, -, and links)
+            const html = mdText
+              .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+              .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+              .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+              .replace(/^\> (.*$)/gim, '<blockquote>$1</blockquote>')
+              .replace(/\*\*(.*)\*\*/gim, '<b>$1</b>')
+              .replace(/\*(.*)\*/gim, '<i>$1</i>')
+              .replace(/^\s*\n/gim, '<br />')
+              .replace(/^-{3,}$/gim, '<hr />')
+              .replace(/^\s*[-*+] (.*)$/gim, '<li>$1</li>')
+              .replace(/\[(.*?)\]\((.*?)\)/gim, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+              .replace(/\n/g, '<br>');
+
+            readmeContent.innerHTML = html;
+          })
+          .catch(err => {
+            readmeContent.textContent = 'Failed to load README.md';
+            console.error(err);
+          });
+      }
+    }
+
+    // Existing code for keywords input rendering
+    let workbookData = [];
+    let headers = [];
+
+    const keywordInputsDiv = document.getElementById("keywordInputs");
+    const searchModeSelect = document.getElementById("searchMode");
+
+    searchModeSelect.addEventListener("change", renderKeywordInputs);
+    renderKeywordInputs();
+
+    function renderKeywordInputs() {
+      const mode = parseInt(searchModeSelect.value);
+      keywordInputsDiv.innerHTML = "";
+      const label = (mode === 4) ? "Enter exact phrase:" : "Enter keyword #";
+      const count = (mode === 4) ? 1 : mode;
+
+      for (let i = 1; i <= count; i++) {
+        const input = document.createElement("input");
+        input.type = "text";
+        input.placeholder = (mode === 4) ? label : `${label} ${i}`;
+        input.className = "keyword";
+        keywordInputsDiv.appendChild(input);
+      }
+
+      const toggleContainer = document.getElementById("sequentialToggleContainer");
+      toggleContainer.classList.toggle("hidden", !(mode === 2 || mode === 3));
+    }
+
+    function toggleCheckboxMenu() {
+      document.getElementById("outputColumnDropdown").classList.toggle("active");
+    }
+    document.addEventListener("click", function(e) {
+      if (!document.getElementById("outputColumnDropdown").contains(e.target)) {
+        document.getElementById("outputColumnDropdown").classList.remove("active");
+      }
+    });
+
+    // Load file and parse headers
+    const fileInput = document.getElementById("fileInput");
+    const searchColumnSelect = document.getElementById("searchColumn");
+    const checkboxMenuDiv = document.getElementById("checkboxMenu");
+
+    fileInput.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const data = evt.target.result;
+        const wb = XLSX.read(data, {type: 'binary'});
+        const firstSheetName = wb.SheetNames[0];
+        const ws = wb.Sheets[firstSheetName];
+        const jsonData = XLSX.utils.sheet_to_json(ws, {header: 1});
+        workbookData = jsonData;
+        headers = jsonData[0] || [];
+
+        // Populate searchColumn dropdown
+        searchColumnSelect.innerHTML = "";
+        headers.forEach((h, i) => {
+          const option = document.createElement("option");
+          option.value = i;
+          option.textContent = h;
+          searchColumnSelect.appendChild(option);
+        });
+
+        // Populate output columns checkbox menu
+        checkboxMenuDiv.innerHTML = "";
+        headers.forEach((h, i) => {
+          const id = `colchk_${i}`;
+          const label = document.createElement("label");
+          label.htmlFor = id;
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.id = id;
+          checkbox.value = i;
+          checkbox.checked = true; // default select all
+          label.appendChild(checkbox);
+          label.appendChild(document.createTextNode(h));
+          checkboxMenuDiv.appendChild(label);
+        });
+      };
+      reader.readAsBinaryString(file);
+    });
+
+    function getSelectedOutputColumns() {
+      const selected = [];
+      checkboxMenuDiv.querySelectorAll("input[type=checkbox]").forEach(chk => {
+        if (chk.checked) selected.push(parseInt(chk.value));
+      });
+      return selected;
+    }
+
+    // Highlight function for matches in text
+    function highlightText(text, keywords, exactPhrase) {
+      if (exactPhrase) {
+        const regex = new RegExp(`(${escapeRegExp(exactPhrase)})`, "gi");
+        return text.replace(regex, '<span class="highlight">$1</span>');
+      } else {
+        // Highlight each keyword individually
+        keywords.forEach(kw => {
+          if (!kw) return;
+          const regex = new RegExp(`(${escapeRegExp(kw)})`, "gi");
+          text = text.replace(regex, '<span class="highlight">$1</span>');
+        });
+        return text;
+      }
+    }
+
+    function escapeRegExp(string) {
+      return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    function processFile() {
+      if (!workbookData.length) {
+        alert("Please load an Excel file first.");
+        return;
+      }
+
+      const mode = parseInt(searchModeSelect.value);
+      const keywordInputs = Array.from(document.querySelectorAll("#keywordInputs input.keyword"));
+      const keywords = keywordInputs.map(i => i.value.trim()).filter(k => k);
+      if ((mode === 4 && keywords.length !== 1) || (mode !== 4 && keywords.length < 1)) {
+        alert("Please enter required keywords/phrase.");
+        return;
+      }
+
+      const searchColIdx = parseInt(searchColumnSelect.value);
+      if (isNaN(searchColIdx)) {
+        alert("Please select a valid search column.");
+        return;
+      }
+
+      const outputCols = getSelectedOutputColumns();
+      if (outputCols.length === 0) {
+        alert("Please select at least one output column.");
+        return;
+      }
+
+      const sequential = document.getElementById("sequentialToggle").checked;
+
+      const results = [];
+
+      // Loop over rows skipping header row 0
+      for (let i = 1; i < workbookData.length; i++) {
+        const row = workbookData[i];
+        if (!row) continue;
+        const cellValue = (row[searchColIdx] || "").toString();
+
+        if (mode === 4) {
+          // Exact phrase search
+          const phrase = keywords[0].toLowerCase();
+          if (cellValue.toLowerCase().includes(phrase)) {
+            results.push(row);
+          }
+        } else {
+          // Keywords search (1,2,3)
+          if (mode === 1) {
+            // One keyword
+            const kw = keywords[0].toLowerCase();
+            if (cellValue.toLowerCase().includes(kw)) {
+              results.push(row);
+            }
+          } else {
+            // 2 or 3 keywords
+            if (sequential) {
+              // Check sequential appearance
+              let lastIndex = -1;
+              let match = true;
+              for (const kw of keywords) {
+                const idx = cellValue.toLowerCase().indexOf(kw.toLowerCase());
+                if (idx === -1 || idx <= lastIndex) {
+                  match = false;
+                  break;
+                }
+                lastIndex = idx;
+              }
+              if (match) results.push(row);
+            } else {
+              // Non-sequential: all keywords present
+              const allPresent = keywords.every(kw => cellValue.toLowerCase().includes(kw.toLowerCase()));
+              if (allPresent) results.push(row);
+            }
+          }
+        }
+      }
+
+      // Show results count
+      const resultCountDiv = document.getElementById("resultCount");
+      resultCountDiv.textContent = `Found ${results.length} matching rows.`;
+
+      // Render results table
+      const resultTable = document.getElementById("resultTable");
+      if (results.length === 0) {
+        resultTable.innerHTML = "";
+        document.getElementById("downloadSection").classList.add("hidden");
+        return;
+      }
+
+      let html = "<thead><tr>";
+      outputCols.forEach(ci => {
+        html += `<th>${headers[ci]}</th>`;
+      });
+      html += "</tr></thead><tbody>";
+
+      results.forEach(row => {
+        html += "<tr>";
+        outputCols.forEach(ci => {
+          let val = (row[ci] || "").toString();
+
+          // Highlight matches in search column only
+          if (ci === searchColIdx) {
+            if (mode === 4) {
+              val = highlightText(val, [], keywords[0]);
+            } else {
+              val = highlightText(val, keywords, null);
+            }
+          }
+
+          html += `<td>${val}</td>`;
+        });
+        html += "</tr>";
+      });
+
+      html += "</tbody>";
+      resultTable.innerHTML = html;
+      document.getElementById("downloadSection").classList.remove("hidden");
+    }
+
+    // Download HTML
+    function downloadHTML() {
+      const htmlTable = document.getElementById("resultTable").outerHTML;
+      const blob = new Blob([htmlTable], {type: 'text/html'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "search_results.html";
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    // Download Excel (CSV)
+    function downloadExcel() {
+      const results = [];
+      const outputCols = getSelectedOutputColumns();
+
+      // Add headers row
+      const headerRow = outputCols.map(ci => headers[ci]);
+      results.push(headerRow);
+
+      const resultTable = document.getElementById("resultTable");
+      if (!resultTable.tBodies[0]) return;
+
+      for (let row of resultTable.tBodies[0].rows) {
+        const rowData = [];
+        for (let cell of row.cells) {
+          rowData.push(cell.textContent);
+        }
+        results.push(rowData);
+      }
+
+      const ws = XLSX.utils.aoa_to_sheet(results);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Results");
+      XLSX.writeFile(wb, "search_results.xlsx");
+    }
+  </script>
+</body>
+</html>
