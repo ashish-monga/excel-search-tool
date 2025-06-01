@@ -73,4 +73,4 @@ A simple, client-side web application to load Excel files and search their conte
 
 ## License
 
-This project is open-source and free to use or modify.
+This project is open-source and free to use.
