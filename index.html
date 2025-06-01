@@ -79,6 +79,7 @@
 
   <script>
     let workbookData = [], headers = [], results = [], outputCols = [], searchColIdx = 0, searchKeywords = [];
+    let dateColIndices = [];
 
     const keywordInputsDiv = document.getElementById("keywordInputs");
     const searchModeSelect = document.getElementById("searchMode");
@@ -121,11 +122,21 @@
         const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
         workbookData = rows;
         headers = rows[0];
+        identifyDateColumns();
         populateSearchDropdown();
         populateOutputCheckboxes();
       };
       reader.readAsArrayBuffer(file);
     });
+
+    function identifyDateColumns() {
+      dateColIndices = [];
+      headers.forEach((header, idx) => {
+        if (typeof header === "string" && header.toLowerCase().includes("date")) {
+          dateColIndices.push(idx);
+        }
+      });
+    }
 
     function populateSearchDropdown() {
       const select = document.getElementById("searchColumn");
@@ -210,7 +221,8 @@
             seen.add(dedupeKey);
             const resultRow = outputCols.map(idx => {
               let val = row[idx];
-              if (typeof val === "number" && idx !== searchColIdx && XLSX.SSF.parse_date_code(val)) {
+              // Only convert if this column is detected as a date column and val looks like a date serial
+              if (dateColIndices.includes(idx) && typeof val === "number" && XLSX.SSF.parse_date_code(val)) {
                 val = formatDate(val);
               }
               if (idx === searchColIdx) {
