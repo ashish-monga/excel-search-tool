@@ -1,303 +1,989 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Excel Search Tool</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 20px; background: #f4f4f4; }
-    .container { max-width: 900px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-    input[type="file"], select, button, input[type="text"] {
-      display: block; width: 100%; margin-bottom: 15px; padding: 10px; border-radius: 4px; border: 1px solid #ccc;
-      box-sizing: border-box;
-    }
-    label { font-weight: bold; margin-bottom: 5px; display: block; }
-    .dropdown-checkboxes { position: relative; margin-bottom: 15px; }
-    .checkbox-menu {
-      position: absolute; background: white; border: 1px solid #ccc;
-      max-height: 200px; overflow-y: auto; z-index: 1000; display: none; width: 100%;
-    }
-    .checkbox-menu label {
-      display: block; padding: 8px; cursor: pointer; user-select: none;
-    }
-    .checkbox-menu input[type="checkbox"] {
-      margin-right: 10px; accent-color: #000;
-    }
-    .dropdown-checkboxes.active .checkbox-menu { display: block; }
-    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-    td, th { border: 1px solid #ccc; padding: 10px; background: #fff; text-align: left; }
-    th { background: #eee; }
-    .highlight { background-color: yellow; font-weight: bold; }
-    .hidden { display: none; }
-    .download-buttons { display: flex; gap: 10px; margin-top: 15px; }
-    .download-buttons button { flex: 1; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h2>Excel Search Tool</h2>
-    <input type="file" id="fileInput" accept=".xlsx,.xls,.xlsm" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=10.0, user-scalable=yes">
+    <title>Excel Search Tool - Modern</title>
+    
+    <!-- Scripts & Fonts -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
-    <label for="searchMode">Search mode:</label>
-    <select id="searchMode">
-      <option value="1" selected>1 keyword</option>
-      <option value="2">2 keywords</option>
-      <option value="3">3 keywords</option>
-      <option value="4">Exact phrase</option>
-    </select>
-
-    <div id="keywordInputs"></div>
-
-    <div id="sequentialToggleContainer" class="hidden" style="margin-bottom: 15px;">
-      <label>
-        <input type="checkbox" id="sequentialToggle" />
-        Match keywords in sequence (Keyword 1 → Keyword 2 → Keyword 3)
-      </label>
-    </div>
-
-    <label for="searchColumn">Column to search (from file):</label>
-    <select id="searchColumn"></select>
-
-    <label>Columns to include in output (from file):</label>
-    <div class="dropdown-checkboxes" id="outputColumnDropdown">
-      <input type="text" readonly placeholder="Select output columns" onclick="toggleCheckboxMenu()" />
-      <div class="checkbox-menu" id="checkboxMenu"></div>
-    </div>
-
-    <button onclick="processFile()">Search</button>
-
-    <div class="download-buttons hidden" id="downloadSection">
-      <button onclick="downloadHTML()">Download HTML</button>
-      <button onclick="downloadExcel()">Download Excel</button>
-    </div>
-
-    <div id="resultCount"></div>
-    <table id="resultTable"></table>
-  </div>
-
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.16.9/xlsx.full.min.js"></script>
-
-  <script>
-    let workbookData = [], headers = [], results = [], outputCols = [], searchColIdx = 0, searchKeywords = [];
-    let dateColIndices = [];
-
-    const keywordInputsDiv = document.getElementById("keywordInputs");
-    const searchModeSelect = document.getElementById("searchMode");
-    searchModeSelect.addEventListener("change", renderKeywordInputs);
-    renderKeywordInputs();
-
-    function renderKeywordInputs() {
-      const mode = parseInt(searchModeSelect.value);
-      keywordInputsDiv.innerHTML = "";
-      const label = (mode === 4) ? "Enter exact phrase:" : "Enter keyword #";
-      const count = (mode === 4) ? 1 : mode;
-      for (let i = 1; i <= count; i++) {
-        const input = document.createElement("input");
-        input.type = "text";
-        input.placeholder = (mode === 4) ? label : `${label} ${i}`;
-        input.className = "keyword";
-        keywordInputsDiv.appendChild(input);
-      }
-      document.getElementById("sequentialToggleContainer").classList.toggle("hidden", !(mode === 2 || mode === 3));
-    }
-
-    function toggleCheckboxMenu() {
-      document.getElementById("outputColumnDropdown").classList.toggle("active");
-    }
-
-    document.addEventListener("click", function(e) {
-      if (!document.getElementById("outputColumnDropdown").contains(e.target)) {
-        document.getElementById("outputColumnDropdown").classList.remove("active");
-      }
-    });
-
-    document.getElementById("fileInput").addEventListener("change", function() {
-      const file = this.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: "array" });
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-        workbookData = rows;
-        headers = rows[0];
-        identifyDateColumns();
-        populateSearchDropdown();
-        populateOutputCheckboxes();
-      };
-      reader.readAsArrayBuffer(file);
-    });
-
-    function identifyDateColumns() {
-      dateColIndices = [];
-      headers.forEach((header, idx) => {
-        if (typeof header === "string" && header.toLowerCase().includes("date")) {
-          dateColIndices.push(idx);
+    <style>
+        /* Modern Font Stack */
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f8fafc; /* Very light slate background */
+            -webkit-font-smoothing: antialiased;
         }
-      });
+
+        /* Glassmorphism Header */
+        .glass-header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(226, 232, 240, 0.8);
+        }
+
+        /* Card Styles */
+        .control-card {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+            border: 1px solid #e2e8f0;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .control-card:hover {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.025);
+        }
+
+        /* Input Fields */
+        .modern-select {
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+            background-position: right 0.75rem center;
+            background-repeat: no-repeat;
+            background-size: 1.5em 1.5em;
+        }
+
+        /* Highlight Logic */
+        .highlight {
+            background-color: #fef9c3; /* yellow-100 */
+            color: #0f172a; /* slate-900 */
+            padding: 2px 6px;
+            border-radius: 6px;
+            border-bottom: 3px solid #facc15; /* yellow-400 */
+            font-weight: 800;
+            display: inline-block;
+        }
+
+        /* Sortable Columns */
+        th.sortable {
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        th.sortable:hover {
+            background-color: #f1f5f9; /* slate-100 */
+            color: #1e293b; /* slate-800 */
+        }
+        
+        /* Custom Checkbox */
+        .custom-checkbox {
+            width: 22px;
+            height: 22px;
+            accent-color: #3b82f6; /* blue-500 */
+            cursor: pointer;
+            border-radius: 6px;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8; 
+        }
+    </style>
+</head>
+<body class="text-slate-800">
+
+    <!-- Header Section -->
+    <header class="glass-header sticky top-0 z-30 px-6 py-4 mb-6">
+        <div class="max-w-[1800px] mx-auto flex justify-between items-center">
+            <div class="flex items-center gap-4">
+                <div class="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center text-green-600 shadow-sm">
+                    <i class="fa-solid fa-file-excel text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold text-slate-800 leading-tight">Excel Search Tool</h1>
+                    <div class="flex items-center gap-2 mt-0.5">
+                        <span class="text-xs font-semibold bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md border border-slate-200">Ver 16.2</span>
+                        <span class="text-xs text-slate-400">Snippet View • Multi-File • Modern</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="globalStatus" class="hidden md:flex items-center gap-2 px-3 py-1.5 bg-green-50 text-green-700 text-xs font-bold rounded-full border border-green-100 animate-pulse">
+                <span class="w-2 h-2 bg-green-500 rounded-full"></span>
+                Ready
+            </div>
+        </div>
+    </header>
+
+    <div class="max-w-[1800px] mx-auto px-4 pb-10">
+        
+        <!-- Control Panel Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+            
+            <!-- CARD 1: Upload -->
+            <div class="control-card p-5 flex flex-col h-full">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        <span class="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-sm">1</span>
+                        Files
+                    </h2>
+                    <span id="fileCountBadge" class="text-xs font-bold bg-slate-100 text-slate-500 px-2 py-1 rounded-full hidden">0</span>
+                </div>
+
+                <div class="flex-1 flex flex-col">
+                    <div class="relative group">
+                        <label for="fileInput" class="flex flex-col items-center justify-center w-full h-32 border-2 border-slate-200 border-dashed rounded-xl cursor-pointer bg-slate-50/50 hover:bg-blue-50 hover:border-blue-300 transition-all group-hover:scale-[1.01]">
+                            <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                                <i class="fa-solid fa-cloud-arrow-up text-3xl text-slate-400 group-hover:text-blue-500 mb-2 transition-colors"></i>
+                                <p class="mb-1 text-sm font-medium text-slate-600">Click to upload files</p>
+                                <p class="text-xs text-slate-400">XLSX, XLS, XLSM</p>
+                            </div>
+                            <input type="file" id="fileInput" accept=".xlsx,.xls,.xlsm" multiple class="hidden" />
+                        </label>
+                    </div>
+
+                    <!-- File List -->
+                    <div id="fileListContainer" class="mt-4 flex-1 hidden">
+                        <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 pl-1">Uploaded</p>
+                        <ul id="fileList" class="space-y-2 max-h-[140px] overflow-y-auto pr-1"></ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CARD 2: Search Config -->
+            <div class="control-card p-5 flex flex-col h-full">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        <span class="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-sm">2</span>
+                        Configuration
+                    </h2>
+                </div>
+
+                <div class="space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">Target Column</label>
+                            <select id="searchColumn" class="modern-select w-full bg-slate-50 border border-slate-200 text-slate-800 text-sm rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 block p-2.5 font-medium disabled:opacity-50" disabled>
+                                <option>Upload file first...</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">Search Mode</label>
+                            <select id="searchMode" class="modern-select w-full bg-slate-50 border border-slate-200 text-slate-800 text-sm rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 block p-2.5 font-medium">
+                                <option value="1">1 Keyword</option>
+                                <option value="2">2 Keywords (AND)</option>
+                                <option value="3">3 Keywords (AND)</option>
+                                <option value="4">Exact Phrase</option>
+                                <option value="hospital">Hospital (Intent)</option>
+                                <option value="school">School (Intent)</option>
+                                <option value="college">College (Intent)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">Keywords</label>
+                        <div id="keywordInputs" class="space-y-2 max-h-[160px] overflow-y-auto pr-1">
+                            <!-- Dynamic inputs -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CARD 3: Output -->
+            <div class="control-card p-5 flex flex-col h-full">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        <span class="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-sm">3</span>
+                        Output & Actions
+                    </h2>
+                </div>
+
+                <div class="space-y-4 flex-1">
+                    <!-- Column Selector -->
+                    <div class="relative">
+                        <button id="toggleColumnsBtn" class="w-full flex justify-between items-center bg-slate-50 border border-slate-200 text-slate-700 text-sm font-medium rounded-lg p-2.5 hover:bg-slate-100 transition-colors" disabled>
+                            <span>Select Output Columns</span>
+                            <i class="fa-solid fa-chevron-down text-xs text-slate-400"></i>
+                        </button>
+                        <div id="columnDropdown" class="hidden absolute z-50 mt-2 w-full bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto p-2 space-y-1"></div>
+                    </div>
+
+                    <!-- Options Grid -->
+                    <div class="grid grid-cols-2 gap-3">
+                        <!-- Font Size (DEFAULT: SMALL) -->
+                        <div class="col-span-2">
+                             <select id="fontSizeSelect" class="modern-select w-full bg-slate-50 border border-slate-200 text-slate-800 text-sm rounded-lg focus:ring-blue-500 p-2 font-medium">
+                                <option value="text-sm" selected>Font: Small</option>
+                                <option value="text-[26px]">Font: Large (26px)</option>
+                            </select>
+                        </div>
+
+                        <!-- Toggles: ALL CHECKED BY DEFAULT (as per original logic, only columns unchecked) -->
+                        <label class="flex items-center p-2 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-100 transition-all cursor-pointer">
+                            <input type="checkbox" id="keepLine" checked class="custom-checkbox rounded text-blue-600 mr-3">
+                            <span class="text-sm font-medium text-slate-600">Snippet View</span>
+                        </label>
+                        <label class="flex items-center p-2 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-100 transition-all cursor-pointer">
+                            <input type="checkbox" id="dropDuplicates" checked class="custom-checkbox rounded text-blue-600 mr-3">
+                            <span class="text-sm font-medium text-slate-600">Unique Rows</span>
+                        </label>
+                        <label class="flex items-center p-2 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-100 transition-all cursor-pointer">
+                            <input type="checkbox" id="appendContact" checked class="custom-checkbox rounded text-blue-600 mr-3">
+                            <span class="text-sm font-medium text-slate-600">Add Phone</span>
+                        </label>
+                        <label class="flex items-center p-2 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-100 transition-all cursor-pointer">
+                            <input type="checkbox" id="createNumbers" checked class="custom-checkbox rounded text-blue-600 mr-3">
+                            <span class="text-sm font-medium text-slate-600">Phone Col</span>
+                        </label>
+                         <label class="flex items-center p-2 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-100 transition-all cursor-pointer col-span-2">
+                            <input type="checkbox" id="dedupNumbers" checked class="custom-checkbox rounded text-blue-600 mr-3">
+                            <span class="text-sm font-medium text-slate-600">Unique Phones per Cell</span>
+                        </label>
+                    </div>
+                </div>
+
+                <button onclick="processFile()" id="searchBtn" disabled
+                    class="mt-6 w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold py-3 px-4 rounded-xl shadow-lg shadow-blue-500/20 transition-all flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none text-base transform active:scale-[0.98]">
+                    <i class="fa-solid fa-magnifying-glass"></i> Run Search
+                </button>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div class="control-card overflow-hidden flex flex-col h-[700px]">
+            <!-- Toolbar -->
+            <div class="px-6 py-4 border-b border-slate-100 bg-white flex justify-between items-center sticky top-0 z-20">
+                <div class="flex items-center gap-4">
+                    <h2 class="text-lg font-bold text-slate-800">Results</h2>
+                    <span id="resultStatus" class="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
+                        Waiting for search...
+                    </span>
+                </div>
+                <div id="downloadButtons" class="hidden flex gap-2">
+                    <button onclick="downloadHTML()" class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-bold py-2 px-4 rounded-lg transition-colors flex items-center gap-2">
+                        <i class="fa-brands fa-html5 text-orange-500"></i> HTML
+                    </button>
+                    <button onclick="downloadExcel()" class="bg-green-600 hover:bg-green-700 text-white text-sm font-bold py-2 px-4 rounded-lg shadow-md shadow-green-500/20 transition-colors flex items-center gap-2">
+                        <i class="fa-solid fa-file-excel"></i> Excel
+                    </button>
+                </div>
+            </div>
+
+            <!-- Table Container -->
+            <div class="flex-1 overflow-auto relative w-full bg-slate-50/30">
+                <div id="emptyState" class="absolute inset-0 flex flex-col items-center justify-center text-slate-300">
+                    <i class="fa-solid fa-magnifying-glass-chart text-6xl mb-4"></i>
+                    <p class="text-lg font-medium text-slate-400">Results will appear here</p>
+                </div>
+                
+                <table id="resultTable" class="min-w-full divide-y divide-slate-200 hidden border-collapse text-left">
+                    <thead class="bg-slate-50/90 backdrop-blur sticky top-0 z-10 shadow-sm">
+                        <tr id="tableHeader"></tr>
+                    </thead>
+                    <!-- Default to 'text-sm' initially -->
+                    <tbody id="tableBody" class="bg-white divide-y divide-slate-100 text-sm font-bold text-slate-800 leading-relaxed"></tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+<script>
+// --- LOGIC SECTION ---
+
+let workbookData = [];
+let headers = [];
+let fileCache = [];
+let combinedData = [];
+let combinedHeaders = [];
+let results = [];
+let outputCols = [];
+let currentSort = { col: -1, dir: 'asc' };
+
+// --- KEYWORD DEFINITIONS ---
+
+const HOSPITAL_INTENT = [
+    "running hospital","operational hospital","functional hospital","existing hospital",
+    "hospital with beds","hospital beds","bed hospital","speciality hospital",
+    "multispeciality hospital","hospital land","hospital plot","hospital building",
+    "hospital structure","hospital structure only","hospital approved land",
+    "land for hospital","reserved for hospital","medical land",
+    "institutional land hospital","hospital for sale","hospital available","hospital property",
+    "nursing home", "clinic space", "medical center",
+    // Added new institutional terms
+    "institutional", "institutional site", "institutional zone", "approved institutional", "institutional plot", "institutional land"
+];
+
+const SCHOOL_INTENT = [
+    "school land", "school land for sale", "school plot", "school plots", "school site", "school site available", "school building", "school property", "school campus", "school available", "school at", "school road", "school main road", "school and college", "school and hospital", "running school", "running nursery school", "play school running", "cbse school operational", "nursery school", "nursary school", "play school", "public school", "primary school", "cbse school", "dps school", "boarding school", "day school", "hospital school", "hotel school", "school and hospital", "school and college", "sale school", "cbse",
+    // Institutional terms for school as well
+    "institutional", "institutional site", "institutional zone", "approved institutional", "institutional plot", "institutional land"
+];
+
+const COLLEGE_INTENT = [
+    // Institutional terms
+    "institutional", "institutional site", "institutional zone", "approved institutional", "institutional plot", "institutional land",
+    // College terms
+    "college", "medical college", "institutional land", "school and college", "hospital and college", "running medical college", "existing engineering college", "private nursing college", "college land", "college land for sale", "college plot on main road", "college campus available", "medical college", "engineering college", "nursing college", "pharmacy college", "degree college", "running college", "existing college", "government college", "private college", "hotel college", "school and college", "hospital and college", "land college", "college land", "college plot", "college campus", "college building", "college site", "college available", "college for sale", "college road", "college and hospital", "college and school", "college property"
+];
+
+// References
+const fileInput = document.getElementById("fileInput");
+const fileListContainer = document.getElementById("fileListContainer");
+const fileList = document.getElementById("fileList");
+const fileCountBadge = document.getElementById("fileCountBadge");
+const searchMode = document.getElementById("searchMode");
+const keywordInputsDiv = document.getElementById("keywordInputs");
+const searchColumnSel = document.getElementById("searchColumn");
+const columnDropdown = document.getElementById("columnDropdown");
+const toggleColumnsBtn = document.getElementById("toggleColumnsBtn");
+const searchBtn = document.getElementById("searchBtn");
+const resultStatus = document.getElementById("resultStatus");
+const downloadButtons = document.getElementById("downloadButtons");
+const tableBody = document.getElementById("tableBody");
+const tableHeader = document.getElementById("tableHeader");
+const resultTable = document.getElementById("resultTable");
+const emptyState = document.getElementById("emptyState");
+const globalStatus = document.getElementById("globalStatus");
+const fontSizeSelect = document.getElementById("fontSizeSelect");
+
+// Init
+renderKeywordInputs();
+
+// Listeners
+searchMode.addEventListener("change", renderKeywordInputs);
+
+toggleColumnsBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    columnDropdown.classList.toggle("hidden");
+    const icon = toggleColumnsBtn.querySelector("i");
+    icon.classList.toggle("fa-chevron-down");
+    icon.classList.toggle("fa-chevron-up");
+});
+
+document.addEventListener("click", (e) => {
+    if (!toggleColumnsBtn.contains(e.target) && !columnDropdown.contains(e.target)) {
+        columnDropdown.classList.add("hidden");
+        const icon = toggleColumnsBtn.querySelector("i");
+        icon.classList.remove("fa-chevron-up");
+        icon.classList.add("fa-chevron-down");
+    }
+});
+
+fileInput.addEventListener("change", handleFileAdd);
+
+fontSizeSelect.addEventListener("change", function() {
+    const sizeClasses = ["text-sm", "text-[26px]"];
+    tableBody.classList.remove(...sizeClasses);
+    tableBody.classList.add(this.value);
+});
+
+// Functions
+
+function renderKeywordInputs() {
+    keywordInputsDiv.innerHTML = "";
+    const mode = searchMode.value;
+    
+    // Helper to create info box
+    const createInfoBox = (intentName, count) => {
+        const info = document.createElement("div");
+        info.className = "text-sm font-medium text-blue-700 bg-blue-50/50 p-3 rounded-lg border border-blue-100 flex items-start gap-2";
+        info.innerHTML = `<i class="fa-solid fa-circle-info mt-0.5"></i> <span>Searching for ${count} ${intentName} terms.</span>`;
+        keywordInputsDiv.appendChild(info);
+    };
+
+    if (mode === "hospital") {
+        createInfoBox("Hospital", HOSPITAL_INTENT.length);
+        return;
+    }
+    
+    if (mode === "school") {
+        createInfoBox("School", SCHOOL_INTENT.length);
+        return;
     }
 
-    function populateSearchDropdown() {
-      const select = document.getElementById("searchColumn");
-      select.innerHTML = "";
-      headers.forEach((header, idx) => {
+    if (mode === "college") {
+        createInfoBox("College", COLLEGE_INTENT.length);
+        return;
+    }
+
+    const count = (mode === "4") ? 1 : parseInt(mode);
+    for (let i = 1; i <= count; i++) {
+        const inp = document.createElement("input");
+        // FIXED: Added keyword-input class so manual modes work
+        inp.className = "keyword-input w-full bg-slate-50 border border-slate-200 text-slate-800 text-base rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 p-2.5 font-medium placeholder-slate-400 transition-all";
+        inp.placeholder = (mode === "4") ? "Exact phrase..." : `Keyword ${i}...`;
+        keywordInputsDiv.appendChild(inp);
+    }
+}
+
+async function handleFileAdd(e) {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    globalStatus.innerHTML = '<span class="w-2 h-2 bg-yellow-400 rounded-full animate-ping"></span> Reading...';
+    globalStatus.classList.remove("hidden");
+    searchBtn.disabled = true;
+    searchBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Reading Files...';
+
+    const readFile = (file) => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: "array" });
+                    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+                    
+                    let fileHeaders = [];
+                    let fileData = [];
+                    if (json.length > 0) {
+                        fileHeaders = json[0].map(h => String(h || "").trim());
+                        fileData = json.slice(1);
+                    }
+
+                    resolve({ 
+                        id: Date.now() + Math.random().toString(36),
+                        name: file.name, 
+                        headers: fileHeaders,
+                        data: fileData, 
+                        totalRows: fileData.length
+                    });
+                } catch (err) {
+                    reject({ name: file.name, error: err });
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        });
+    };
+
+    try {
+        const newFilesData = await Promise.all(Array.from(files).map(f => readFile(f)));
+        fileCache = [...fileCache, ...newFilesData];
+        fileInput.value = ""; 
+        recalculateCombinedData();
+        renderFileList();
+    } catch (error) {
+        console.error(error);
+        alert("Error reading files.");
+    }
+}
+
+function removeFile(id) {
+    fileCache = fileCache.filter(f => f.id !== id);
+    recalculateCombinedData();
+    renderFileList();
+}
+
+function recalculateCombinedData() {
+    if (fileCache.length === 0) {
+        combinedData = [];
+        combinedHeaders = [];
+        resetUI();
+        return;
+    }
+
+    combinedHeaders = fileCache[0].headers;
+    let headerMismatch = false;
+    combinedData = [];
+    combinedData.push(combinedHeaders);
+
+    fileCache.forEach(fileObj => {
+        if (JSON.stringify(fileObj.headers) !== JSON.stringify(combinedHeaders)) {
+            headerMismatch = true;
+        }
+        combinedData = combinedData.concat(fileObj.data);
+    });
+
+    workbookData = combinedData;
+    headers = combinedHeaders;
+
+    if (workbookData.length > 1) {
+        populateSearchColumns();
+        populateOutputCheckboxes();
+        
+        searchBtn.disabled = false;
+        searchBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Run Search';
+        toggleColumnsBtn.disabled = false;
+        searchColumnSel.disabled = false;
+        
+        const totalRows = workbookData.length - 1;
+        resultStatus.textContent = `${totalRows} rows ready.`;
+        
+        if (headerMismatch) {
+            globalStatus.innerHTML = '<span class="w-2 h-2 bg-yellow-500 rounded-full"></span> Mismatch Warning';
+            globalStatus.className = "flex items-center gap-2 px-3 py-1.5 bg-yellow-50 text-yellow-700 text-xs font-bold rounded-full border border-yellow-200";
+        } else {
+            globalStatus.innerHTML = '<span class="w-2 h-2 bg-green-500 rounded-full"></span> Ready';
+            globalStatus.className = "flex items-center gap-2 px-3 py-1.5 bg-green-50 text-green-700 text-xs font-bold rounded-full border border-green-100";
+        }
+    } else {
+        resetUI();
+    }
+}
+
+function renderFileList() {
+    fileList.innerHTML = "";
+    if (fileCache.length === 0) {
+        fileListContainer.classList.add("hidden");
+        fileCountBadge.classList.add("hidden");
+        return;
+    }
+
+    fileListContainer.classList.remove("hidden");
+    fileCountBadge.textContent = `${fileCache.length}`;
+    fileCountBadge.classList.remove("hidden");
+
+    fileCache.forEach(f => {
+        const li = document.createElement("li");
+        li.className = "flex justify-between items-center bg-white p-2.5 rounded-lg border border-slate-100 shadow-sm group hover:border-blue-100 transition-colors";
+        li.innerHTML = `
+            <div class="flex items-center overflow-hidden">
+                <div class="w-8 h-8 rounded bg-green-50 flex items-center justify-center text-green-600 mr-3">
+                    <i class="fa-regular fa-file-excel"></i>
+                </div>
+                <div class="flex flex-col min-w-0">
+                    <span class="text-sm font-semibold truncate text-slate-700" title="${f.name}">${f.name}</span>
+                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wide">${f.totalRows} rows</span>
+                </div>
+            </div>
+            <button onclick="removeFile('${f.id}')" class="text-slate-300 hover:text-red-500 p-2 transition-colors rounded-full hover:bg-red-50" title="Remove file">
+                <i class="fa-solid fa-trash-can"></i>
+            </button>
+        `;
+        fileList.appendChild(li);
+    });
+}
+
+function resetUI() {
+    searchBtn.disabled = true;
+    searchBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Run Search';
+    toggleColumnsBtn.disabled = true;
+    toggleColumnsBtn.innerHTML = `<span>Select Output Columns</span><i class="fa-solid fa-chevron-down text-xs"></i>`;
+    searchColumnSel.disabled = true;
+    searchColumnSel.innerHTML = "<option>Wait for file...</option>";
+    resultStatus.textContent = "Waiting...";
+    fileListContainer.classList.add("hidden");
+    fileCountBadge.classList.add("hidden");
+}
+
+function populateSearchColumns() {
+    const prevSelection = searchColumnSel.value;
+    searchColumnSel.innerHTML = "";
+    headers.forEach((h, i) => {
         const opt = document.createElement("option");
-        opt.value = idx;
-        opt.textContent = header;
-        select.appendChild(opt);
-      });
+        opt.value = i;
+        opt.textContent = h || `Col ${i+1}`;
+        searchColumnSel.appendChild(opt);
+        
+        const lowerH = h.toLowerCase();
+        if (lowerH.includes("content") || lowerH.includes("description") || lowerH === "text") {
+            searchColumnSel.value = i;
+        }
+    });
+    if(prevSelection && prevSelection < headers.length) {
+        searchColumnSel.value = prevSelection;
+    }
+}
+
+function populateOutputCheckboxes() {
+    columnDropdown.innerHTML = "";
+    
+    // Select All (UNCHECKED BY DEFAULT)
+    const selectAllDiv = document.createElement("div");
+    selectAllDiv.className = "flex items-center p-3 hover:bg-slate-50 rounded-lg cursor-pointer border-b border-slate-100 mb-1";
+    selectAllDiv.innerHTML = `
+        <input type="checkbox" id="selectAllCols" class="custom-checkbox rounded text-blue-600 mr-3">
+        <label for="selectAllCols" class="text-sm font-bold text-slate-700 cursor-pointer uppercase">Select All</label>
+    `;
+    columnDropdown.appendChild(selectAllDiv);
+
+    headers.forEach((h, i) => {
+        const div = document.createElement("div");
+        div.className = "flex items-center p-2.5 hover:bg-slate-50 rounded-lg cursor-pointer";
+        // Checkboxes (UNCHECKED BY DEFAULT)
+        div.innerHTML = `
+            <input type="checkbox" value="${i}" class="col-checkbox custom-checkbox rounded text-blue-600 mr-3">
+            <label class="text-sm font-medium text-slate-600 cursor-pointer truncate select-none">${h || `Column ${i+1}`}</label>
+        `;
+        div.addEventListener("click", (e) => {
+             if(e.target.tagName !== 'INPUT') {
+                 const cb = div.querySelector('input');
+                 cb.checked = !cb.checked;
+                 updateColumnButtonText();
+             } else {
+                 updateColumnButtonText();
+             }
+        });
+        columnDropdown.appendChild(div);
+    });
+
+    const selectAllCb = document.getElementById("selectAllCols");
+    selectAllCb.addEventListener("change", (e) => {
+        const checks = document.querySelectorAll(".col-checkbox");
+        checks.forEach(c => c.checked = e.target.checked);
+        updateColumnButtonText();
+    });
+
+    updateColumnButtonText();
+}
+
+function updateColumnButtonText() {
+    const checked = document.querySelectorAll(".col-checkbox:checked");
+    const total = document.querySelectorAll(".col-checkbox").length;
+    
+    const btnSpan = toggleColumnsBtn.querySelector("span");
+    if (checked.length === 0) btnSpan.textContent = "Select Output Columns";
+    else if (checked.length === total) btnSpan.textContent = "All Columns Selected";
+    else btnSpan.textContent = `${checked.length} Columns`;
+}
+
+function extractNumbers(text, dedup) {
+    if (!text) return "";
+    const matches = String(text).match(/(?:\+?\d{1,4}[\s-]?)?\(?\d{2,5}\)?[\s-]?\d{3,4}[\s-]?\d{3,4}/g) || [];
+    let nums = matches.map(m => m.replace(/[^\d+]/g, '').trim()).filter(n => n.length > 6);
+    if (dedup) {
+        nums = [...new Set(nums)];
+    }
+    return nums.join(", ");
+}
+
+function toSentenceCase(str) {
+    if (!str) return "";
+    return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+}
+
+function escapeRegExp(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); 
+}
+
+// === SNIPPET GENERATION LOGIC ===
+function generateSnippet(text, keywords) {
+    // 1. Convert text to sentence case first (base for display)
+    const baseText = toSentenceCase(text);
+    const lowerText = baseText.toLowerCase(); // for searching
+    const contextRadius = 60; // characters before/after
+    
+    // 2. Find all keyword matches indices
+    let ranges = [];
+    
+    // Sort keywords by length desc to prioritize longer matches
+    const sortedKeys = [...keywords].sort((a,b) => b.length - a.length);
+    
+    // Find all matches
+    sortedKeys.forEach(k => {
+        const keyLower = k.toLowerCase();
+        let pos = lowerText.indexOf(keyLower);
+        while (pos !== -1) {
+            // Add range [start, end] including context
+            const start = Math.max(0, pos - contextRadius);
+            const end = Math.min(baseText.length, pos + keyLower.length + contextRadius);
+            ranges.push({start, end});
+            pos = lowerText.indexOf(keyLower, pos + 1);
+        }
+    });
+    
+    if (ranges.length === 0) return baseText; // Fallback
+    
+    // 3. Merge overlapping ranges
+    ranges.sort((a,b) => a.start - b.start);
+    
+    let merged = [];
+    if (ranges.length > 0) {
+        let current = ranges[0];
+        for (let i = 1; i < ranges.length; i++) {
+            if (ranges[i].start <= current.end) {
+                // Overlap or adjacent, extend current
+                current.end = Math.max(current.end, ranges[i].end);
+            } else {
+                // No overlap, push current and start new
+                merged.push(current);
+                current = ranges[i];
+            }
+        }
+        merged.push(current);
+    }
+    
+    // 4. Construct Snippet String
+    let snippet = "";
+    merged.forEach((r, i) => {
+        if (i > 0 || r.start > 0) snippet += " ... ";
+        snippet += baseText.substring(r.start, r.end);
+    });
+    if (merged.length > 0 && merged[merged.length-1].end < baseText.length) {
+        snippet += " ...";
+    }
+    
+    return snippet;
+}
+
+function processFile() {
+    const colIdx = parseInt(searchColumnSel.value);
+    const mode = searchMode.value;
+    
+    const keepLine = document.getElementById("keepLine").checked; // Rename to snippetView? Keeping ID for now.
+    const appendContact = document.getElementById("appendContact").checked;
+    const createNumbers = document.getElementById("createNumbers").checked;
+    const dropDuplicates = document.getElementById("dropDuplicates").checked;
+    const dedupNumbers = document.getElementById("dedupNumbers").checked;
+
+    let keys = [];
+    if (mode === "hospital") keys = HOSPITAL_INTENT;
+    else if (mode === "school") keys = SCHOOL_INTENT;
+    else if (mode === "college") keys = COLLEGE_INTENT;
+    else {
+        const inputs = document.querySelectorAll(".keyword-input");
+        inputs.forEach(inp => {
+            if (inp.value.trim()) keys.push(inp.value.trim().toLowerCase());
+        });
     }
 
-    function populateOutputCheckboxes() {
-      const menu = document.getElementById("checkboxMenu");
-      menu.innerHTML = "";
-      headers.forEach((header, idx) => {
-        const label = document.createElement("label");
-        label.innerHTML = `<input type="checkbox" value="${idx}" ${header.toLowerCase() === "content" ? "checked" : ""}/> ${header}`;
-        menu.appendChild(label);
-      });
-      updateOutputPlaceholder();
-      menu.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.addEventListener('change', updateOutputPlaceholder));
-    }
-
-    function updateOutputPlaceholder() {
-      const selected = Array.from(document.querySelectorAll("#checkboxMenu input:checked")).map(cb => headers[parseInt(cb.value)]);
-      document.querySelector("#outputColumnDropdown input").value = selected.join(", ");
-    }
-
-    function formatDate(excelDate) {
-      const date = XLSX.SSF.parse_date_code(excelDate);
-      if (!date) return excelDate;
-      const d = new Date(Date.UTC(date.y, date.m - 1, date.d));
-      return `${("0" + d.getDate()).slice(-2)}-${("0" + (d.getMonth() + 1)).slice(-2)}-${d.getFullYear().toString().slice(-2)}`;
-    }
-
-    function processFile() {
-      const mode = parseInt(searchModeSelect.value);
-      const sequential = document.getElementById("sequentialToggle").checked;
-      const inputs = document.querySelectorAll(".keyword");
-      const keywords = Array.from(inputs).map(i => i.value.trim()).filter(k => k);
-      if ((mode < 4 && keywords.length !== mode) || (mode === 4 && keywords.length !== 1)) {
-        alert("Please enter the correct number of keywords/phrase.");
+    if (keys.length === 0 && keepLine) {
+        alert("Please enter at least one keyword.");
         return;
-      }
-      searchColIdx = parseInt(document.getElementById("searchColumn").value);
-      outputCols = Array.from(document.querySelectorAll("#checkboxMenu input:checked")).map(cb => parseInt(cb.value));
-      if (isNaN(searchColIdx) || outputCols.length === 0) {
-        alert("Please select a search column and at least one output column.");
-        return;
-      }
+    }
 
-      const lowerKeywords = keywords.map(k => k.toLowerCase());
-      const seen = new Set();
-      results = [];
-      searchKeywords = keywords;
+    const checkedBoxes = document.querySelectorAll(".col-checkbox:checked");
+    outputCols = Array.from(checkedBoxes).map(cb => parseInt(cb.value));
 
-      for (let i = 1; i < workbookData.length; i++) {
+    results = [];
+    const seenRows = new Set();
+
+    for (let i = 1; i < workbookData.length; i++) {
         const row = workbookData[i];
         if (!row) continue;
-        const cell = row[searchColIdx];
-        if (!cell || typeof cell !== "string") continue;
+        
+        const cellValue = row[colIdx];
+        const cellText = String(cellValue || "").toLowerCase();
+        
+        let isMatch = false;
 
-        const lowerCell = cell.toLowerCase();
-        let match = false;
-
-        if (mode === 4) {
-          match = lowerCell.includes(lowerKeywords[0]);
-        } else if ((mode === 2 || mode === 3) && sequential) {
-          if (!lowerCell.includes(lowerKeywords[0])) {
-            match = false;
-          } else {
-            match = lowerKeywords.slice(1).every(k => lowerCell.includes(k));
-          }
+        if (mode === "hospital" || mode === "school" || mode === "college") {
+            isMatch = keys.some(k => cellText.includes(k));
+        } else if (mode === "4") {
+            if (keys.length > 0) isMatch = cellText.includes(keys[0]);
         } else {
-          match = lowerKeywords.every(k => lowerCell.includes(k));
+            if (keys.length > 0) {
+                isMatch = keys.every(k => cellText.includes(k));
+            } else {
+                isMatch = true; 
+            }
         }
 
-        if (match) {
-          const dedupeKey = String(row[searchColIdx]).toLowerCase().replace(/\s+/g, " ").trim();
-          if (!seen.has(dedupeKey)) {
-            seen.add(dedupeKey);
-            const resultRow = outputCols.map(idx => {
-              let val = row[idx];
-              // Only convert if this column is detected as a date column and val looks like a date serial
-              if (dateColIndices.includes(idx) && typeof val === "number" && XLSX.SSF.parse_date_code(val)) {
-                val = formatDate(val);
-              }
-              if (idx === searchColIdx) {
-                let strVal = String(val);
-                lowerKeywords.forEach(k => {
-                  const regex = new RegExp(k, "gi");
-                  strVal = strVal.replace(regex, match => `<span class="highlight">${match}</span>`);
-                });
-                return strVal;
-              }
-              return val || "";
+        // Logic Change: ALWAYS FILTER non-matching rows
+        if (!isMatch) continue;
+
+        // --- SNIPPET LOGIC START ---
+        let formattedText = "";
+        
+        // Step 1: Generate Base Text (Snippet vs Full)
+        // If "Snippet View" (keepLine) is checked, show snippet.
+        // If Unchecked, show full text.
+        if (keepLine) {
+            // Generate Context Snippet
+            formattedText = generateSnippet(String(cellValue || ""), keys);
+        } else {
+            // Full Text (Sentence Case)
+            formattedText = toSentenceCase(String(cellValue || ""));
+        }
+        
+        // Step 2: Highlight Keywords in the result text (Snippet or Full)
+        if (keys.length > 0) {
+            const sortedKeys = [...keys].sort((a,b) => b.length - a.length);
+            const pattern = new RegExp(`(${sortedKeys.map(escapeRegExp).join("|")})`, "gi");
+            
+            formattedText = formattedText.replace(pattern, (match) => {
+                return `<span class="highlight">${match.toUpperCase()}</span>`;
             });
-            results.push(resultRow);
-          }
         }
-      }
+        // --- SNIPPET LOGIC END ---
+        
+        if (appendContact) {
+            const nums = extractNumbers(cellValue, dedupNumbers);
+            if (nums) {
+                const appendStr = ` (Extracted: ${nums})`;
+                formattedText += `<span class="text-slate-500 font-bold text-lg ml-2 block mt-1">${appendStr}</span>`;
+            }
+        }
 
-      displayResults(results, outputCols);
+        const outRow = [];
+        // Fix 2: Use full row for deduplication signature
+        const rowSignature = JSON.stringify(row);
+        
+        if (dropDuplicates && seenRows.has(rowSignature)) continue;
+        if (dropDuplicates) seenRows.add(rowSignature);
+
+        outputCols.forEach(idx => {
+            if (idx === colIdx) {
+                outRow.push({ html: formattedText, text: toSentenceCase(String(cellValue || "")) });
+            } else {
+                const val = String(row[idx] || "");
+                const prettyVal = toSentenceCase(val);
+                outRow.push({ html: prettyVal, text: prettyVal });
+            }
+        });
+
+        if (createNumbers) {
+            const phones = extractNumbers(cellValue, dedupNumbers); 
+            outRow.push({ html: phones, text: phones });
+        }
+
+        results.push(outRow);
     }
 
-    function displayResults(results, outputCols) {
-      const table = document.getElementById("resultTable");
-      const resultCount = document.getElementById("resultCount");
-      const downloadSection = document.getElementById("downloadSection");
+    displayResults(createNumbers);
+}
 
-      if (results.length === 0) {
-        resultCount.textContent = "No matches found.";
-        table.innerHTML = "";
-        downloadSection.classList.add("hidden");
+function displayResults(hasNumbers) {
+    // Limit rendering to first 500 rows to avoid hanging
+    const RENDER_LIMIT = 500;
+    const rowsToRender = results.slice(0, RENDER_LIMIT);
+
+    let headerHTML = "";
+    outputCols.forEach((idx, loopIndex) => {
+        let sortClass = "sortable hover:bg-slate-100 cursor-pointer transition-colors";
+        let iconClass = "fa-solid fa-sort text-slate-300 ml-2 text-xs";
+        
+        if (currentSort.col === loopIndex) {
+            sortClass += " bg-slate-100";
+            iconClass = currentSort.dir === 'asc' 
+                ? "fa-solid fa-sort-up text-blue-600 ml-2 text-sm" 
+                : "fa-solid fa-sort-down text-blue-600 ml-2 text-sm";
+        }
+        
+        headerHTML += `<th onclick="sortResults(${loopIndex})" class="${sortClass} px-6 py-4 text-sm font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap select-none border-b border-slate-200">
+            <div class="flex items-center">
+                ${headers[idx]} 
+                <i class="${iconClass}"></i>
+            </div>
+        </th>`;
+    });
+
+    if (hasNumbers) {
+        const phoneColIndex = outputCols.length;
+        let sortClass = "sortable hover:bg-slate-100 cursor-pointer transition-colors";
+        let iconClass = "fa-solid fa-sort text-slate-300 ml-2 text-xs";
+        
+        if (currentSort.col === phoneColIndex) {
+            sortClass += " bg-slate-100";
+            iconClass = currentSort.dir === 'asc' 
+                ? "fa-solid fa-sort-up text-blue-600 ml-2 text-sm" 
+                : "fa-solid fa-sort-down text-blue-600 ml-2 text-sm";
+        }
+        headerHTML += `<th onclick="sortResults(${phoneColIndex})" class="${sortClass} px-6 py-4 text-sm font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap select-none border-b border-slate-200">
+            <div class="flex items-center">
+                Extracted Numbers 
+                <i class="${iconClass}"></i>
+            </div>
+        </th>`;
+    }
+    
+    tableHeader.innerHTML = headerHTML;
+
+    if (results.length === 0) {
+        resultTable.classList.add("hidden");
+        emptyState.classList.remove("hidden");
+        resultStatus.textContent = "No matches found";
+        downloadButtons.classList.add("hidden");
         return;
-      }
-
-      resultCount.textContent = `${results.length} match${results.length > 1 ? "es" : ""} found.`;
-
-      let html = "<thead><tr>";
-      outputCols.forEach(idx => { html += `<th>${headers[idx]}</th>`; });
-      html += "</tr></thead><tbody>";
-      results.forEach(row => {
-        html += "<tr>" + row.map(cell => `<td>${cell}</td>`).join("") + "</tr>";
-      });
-      html += "</tbody>";
-
-      table.innerHTML = html;
-      downloadSection.classList.remove("hidden");
     }
 
-    function getKeywordFileName(ext) {
-      return searchKeywords.join("_").replace(/\s+/g, "_").replace(/[^\w\-]/g, "") + ext;
+    emptyState.classList.add("hidden");
+    resultTable.classList.remove("hidden");
+    
+    // Render only the limited subset of rows
+    const rowsHTML = rowsToRender.map((row, i) => {
+        const bgClass = i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50';
+        return `<tr class="${bgClass} hover:bg-blue-50/50 transition-colors">` + 
+               row.map(cell => `<td class="px-6 py-5 whitespace-normal min-w-[200px] border-b border-slate-100">${cell.html}</td>`).join("") + 
+               `</tr>`;
+    }).join("");
+
+    tableBody.innerHTML = rowsHTML;
+
+    // Show status including if rows are hidden
+    if (results.length > RENDER_LIMIT) {
+        resultStatus.textContent = `Showing ${RENDER_LIMIT} of ${results.length} matches (Download Excel for all)`;
+    } else {
+        resultStatus.textContent = `${results.length} found`;
+    }
+    
+    downloadButtons.classList.remove("hidden");
+}
+
+function sortResults(colIndex) {
+    if (currentSort.col === colIndex) {
+        currentSort.dir = currentSort.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+        currentSort.col = colIndex;
+        currentSort.dir = 'asc';
     }
 
-    function downloadHTML() {
-      const tableHTML = document.getElementById("resultTable").outerHTML;
-      const htmlContent = `
-        <html><head><meta charset="UTF-8"><title>Search Results</title>
-        <style>table { border-collapse: collapse; } td, th { border: 1px solid #ccc; padding: 8px; }</style>
-        </head><body>${tableHTML}</body></html>
-      `;
-      const blob = new Blob([htmlContent], { type: "text/html" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = getKeywordFileName(".html");
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    }
+    const dirMultiplier = currentSort.dir === 'asc' ? 1 : -1;
 
-    function downloadExcel() {
-      const wb = XLSX.utils.book_new();
-      const table = document.getElementById("resultTable");
-      const ws = XLSX.utils.table_to_sheet(table);
-      XLSX.utils.book_append_sheet(wb, ws, "Results");
-      XLSX.writeFile(wb, getKeywordFileName(".xlsx"));
+    results.sort((rowA, rowB) => {
+        const textA = (rowA[colIndex]?.text || "").toLowerCase();
+        const textB = (rowB[colIndex]?.text || "").toLowerCase();
+        
+        if (textA < textB) return -1 * dirMultiplier;
+        if (textA > textB) return 1 * dirMultiplier;
+        return 0;
+    });
+
+    // Re-call displayResults to respect the render limit with sorted data
+    displayResults(document.getElementById("createNumbers").checked);
+}
+
+function downloadHTML() {
+    const tableClone = resultTable.cloneNode(true);
+    tableClone.classList.remove("hidden");
+    const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Search Results</title>
+            <style>
+                body { font-family: sans-serif; padding: 20px; }
+                table { border-collapse: collapse; width: 100%; }
+                th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+                th { background-color: #f2f2f2; font-weight: bold; }
+                .highlight { background-color: yellow; font-weight: bold; }
+            </style>
+        </head>
+        <body>
+            <h2>Search Results</h2>
+            <p>Count: ${results.length}</p>
+            ${tableClone.outerHTML}
+        </body>
+        </html>
+    `;
+    const blob = new Blob([htmlContent], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "search_results.html";
+    a.click();
+}
+
+function downloadExcel() {
+    const dataForSheet = results.map(row => row.map(cell => cell.text));
+    const headerRow = outputCols.map(idx => headers[idx]);
+    if (document.getElementById("createNumbers").checked) {
+        headerRow.push("Extracted Numbers");
     }
-  </script>
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet([headerRow, ...dataForSheet]);
+    XLSX.utils.book_append_sheet(wb, ws, "Results");
+    XLSX.writeFile(wb, "search_results.xlsx");
+}
+</script>
 </body>
 </html>
